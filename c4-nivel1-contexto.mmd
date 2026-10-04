@@ -1,0 +1,15 @@
+flowchart TB
+    SOC(["Socio<br/>[Persona]"])
+    OPS(["Analista de operaciones<br/>[Persona]"])
+    APP["App móvil de la cooperativa<br/>[Sistema existente]"]
+    SIS["Servicio de Autorización de Pagos<br/>[Sistema en desarrollo]<br/>Valida cuenta y límites, registra intentos,<br/>autoriza y concilia"]
+    BNK[["Banco externo / red de pagos<br/>[Sistema externo]"]]
+    CORE[["Core de la cooperativa<br/>[Sistema externo]<br/>Cuentas y límites"]]
+    NOT[["Proveedor de notificaciones<br/>[Push / SMS]"]]
+    SOC -->|"Solicita pagos"| APP
+    APP -->|"REST + Idempotency-Key"| SIS
+    OPS -->|"Revisa pendientes y conciliación"| SIS
+    SIS -->|"Solicita débito o transferencia"| BNK
+    BNK -->|"Estados y extracto"| SIS
+    CORE -->|"Sincroniza cuentas y límites"| SIS
+    SIS -->|"Resultado del pago"| NOT

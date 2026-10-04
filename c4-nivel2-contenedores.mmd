@@ -1,0 +1,24 @@
+flowchart TB
+    APP["App móvil<br/>[Existente]"]
+    OPS(["Analista de operaciones"])
+    subgraph SIS["Servicio de Autorización de Pagos"]
+        API["API de pagos<br/>[Spring Boot - REST + OpenAPI]<br/>Idempotencia, validación, límites,<br/>registro de intentos, cliente bancario"]
+        PAN["Consola de operaciones<br/>[Web interna]<br/>Pendientes y conciliación"]
+        WRK["Workers<br/>[Spring Boot - perfil worker]<br/>Notificaciones, reconsulta, conciliación"]
+        MQ{{"RabbitMQ<br/>Colas: notificaciones, reconsulta, conciliación"}}
+        DB[("PostgreSQL<br/>Intentos, ledger, límites,<br/>auditoría, outbox")]
+    end
+    BNK[["Banco externo"]]
+    CORE[["Core cooperativo"]]
+    NOT[["Push / SMS"]]
+    APP -->|"HTTPS + JWT"| API
+    OPS --> PAN
+    PAN -->|"REST"| API
+    API --> DB
+    API -->|"Timeout 5 s + circuit breaker"| BNK
+    API -->|"Eventos (outbox)"| MQ
+    MQ --> WRK
+    WRK --> DB
+    WRK -->|"Consulta de estado y extracto"| BNK
+    WRK --> NOT
+    CORE -->|"Sincronización de cuentas y límites"| WRK

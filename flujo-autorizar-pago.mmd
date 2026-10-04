@@ -1,0 +1,43 @@
+sequenceDiagram
+    autonumber
+    actor S as Socio
+    participant M as App móvil
+    participant P as API de pagos
+    participant D as PostgreSQL
+    participant B as Banco externo
+    participant Q as RabbitMQ
+    participant W as Workers
+
+    S->>M: Confirma el pago
+    M->>P: POST /pagos con Idempotency-Key (UUID)
+    P->>D: INSERT intento RECIBIDO (clave única por socio y key), commit
+    alt La clave ya existe con el mismo cuerpo
+        D-->>P: Conflicto de unicidad
+        P-->>M: Devuelve el resultado guardado, sin cobrar de nuevo
+    else Clave nueva
+        P->>D: Validar cuenta y límites y reservar monto (una transacción)
+        alt Cuenta o límite inválido
+            P->>D: Intento = RECHAZADO + auditoría
+            P-->>M: 422 con el motivo
+        else Válido
+            P->>B: Solicitar débito con referencia única (timeout 5 s)
+            alt El banco aprueba
+                B-->>P: Aprobado
+                P->>D: AUTORIZADO, confirmar reserva, auditoría
+                P-->>M: 200 AUTORIZADO
+            else El banco rechaza
+                B-->>P: Rechazado
+                P->>D: RECHAZADO, liberar reserva, auditoría
+                P-->>M: 422 rechazado por el banco
+            else Timeout o sin respuesta
+                P->>D: PENDIENTE_CONFIRMACION (la reserva se mantiene)
+                P-->>M: 202 En procesamiento (id de pago)
+                P->>Q: Evento ReconsultarEstado (outbox)
+                Q->>W: Entregar
+                W->>B: Consultar estado por referencia (con backoff)
+                B-->>W: Estado final
+                W->>D: Resolver intento, ajustar reserva, auditoría
+                W->>Q: Evento NotificarResultado
+            end
+        end
+    end
